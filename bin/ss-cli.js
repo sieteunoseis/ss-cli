@@ -16,7 +16,7 @@ const { listAllFolders } = require('../lib/get-folders');
 const { refreshEnv } = require('../lib/refresh-env');
 const { syncWindmillToSS } = require('../lib/windmill-sync');
 const { runWithMapFile, runWithSecret } = require('../lib/run');
-const { sshFromSecret } = require('../lib/ssh');
+const { sshFromSecret, sshCopyIdFromSecret } = require('../lib/ssh');
 const { resolveFile, resolveStdin } = require('../lib/resolve');
 const audit = require('../lib/audit');
 
@@ -361,6 +361,19 @@ program
         const token = requireToken();
         audit.log('ssh', id, true);
         const exitCode = await sshFromSecret(url, token, id, sshArgs);
+        process.exit(exitCode);
+    });
+
+// --- ssh-copy-id ---
+program
+    .command('ssh-copy-id <id>')
+    .description('Copy SSH public key to a server using credentials from a secret')
+    .argument('[ssh-args...]', 'Extra arguments to pass to ssh-copy-id')
+    .action(async (id, sshArgs) => {
+        const url = requireConfigValue('url');
+        const token = requireToken();
+        audit.log('ssh-copy-id', id, true);
+        const exitCode = await sshCopyIdFromSecret(url, token, id, sshArgs);
         process.exit(exitCode);
     });
 
