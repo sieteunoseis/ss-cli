@@ -353,27 +353,27 @@ program
 
 // --- ssh ---
 program
-    .command('ssh <id>')
-    .description('SSH into a server using credentials from a secret')
+    .command('ssh <target>')
+    .description('SSH using secret credentials (target: secret ID or hostname)')
     .argument('[ssh-args...]', 'Extra arguments to pass to ssh')
-    .action(async (id, sshArgs) => {
+    .action(async (target, sshArgs) => {
         const url = requireConfigValue('url');
         const token = requireToken();
-        audit.log('ssh', id, true);
-        const exitCode = await sshFromSecret(url, token, id, sshArgs);
+        audit.log('ssh', target, true);
+        const exitCode = await sshFromSecret(url, token, target, sshArgs);
         process.exit(exitCode);
     });
 
 // --- ssh-copy-id ---
 program
-    .command('ssh-copy-id <id>')
-    .description('Copy SSH public key to a server using credentials from a secret')
+    .command('ssh-copy-id <target>')
+    .description('Copy SSH key using secret credentials (target: secret ID or hostname)')
     .argument('[ssh-args...]', 'Extra arguments to pass to ssh-copy-id')
-    .action(async (id, sshArgs) => {
+    .action(async (target, sshArgs) => {
         const url = requireConfigValue('url');
         const token = requireToken();
-        audit.log('ssh-copy-id', id, true);
-        const exitCode = await sshCopyIdFromSecret(url, token, id, sshArgs);
+        audit.log('ssh-copy-id', target, true);
+        const exitCode = await sshCopyIdFromSecret(url, token, target, sshArgs);
         process.exit(exitCode);
     });
 
