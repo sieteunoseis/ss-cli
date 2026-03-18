@@ -1,6 +1,6 @@
 # ss-cli
 
-CLI tool for [Delinea Secret Server](https://delinea.com/products/secret-server). Supports OAuth2 authentication with TOTP/Duo 2FA, secret CRUD operations, and automated env file syncing.
+CLI tool for [Delinea Secret Server](https://delinea.com/products/secret-server). Supports OAuth2 authentication with TOTP 2FA (any provider — Duo, Google Authenticator, Microsoft Authenticator, etc.), secret CRUD operations, and automated env file syncing.
 
 ## Install
 
@@ -80,13 +80,13 @@ ss-cli config set envMapFile /path/to/env-map.json
 
 ## Authentication
 
-### OAuth2 with TOTP (Duo)
+### OAuth2 with TOTP
 
 Per [Delinea docs](https://docs.delinea.com/online-help/secret-server-11-5-x/api-scripting/authenticating/index.htm), the OTP code is sent as an HTTP header:
 
 ```bash
 ss-cli login
-# Prompts: Username, Domain, Password, Duo TOTP code
+# Prompts: Username, Domain, Password, OTP (TOTP code or "push")
 ```
 
 You can pre-configure username and domain:

@@ -33,7 +33,7 @@ Authentication:
 
 For AI agents / scripts:
   Use --format json on "get" and --json on "token-status" for machine-readable output.
-  Token must be refreshed by a human (Duo MFA required).
+  Token must be refreshed by a human (MFA required).
   Agent workflow: check token-status --json, if expired notify human, else proceed.
 
 Config keys (ss-cli config set <key> <value>):
