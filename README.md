@@ -61,6 +61,8 @@ ss-cli token-status
 | `ss-cli run` | Run a command with secrets as env vars — never written to disk |
 | `ss-cli resolve` | Replace `<ss:ID:field>` placeholders in any file |
 | `ss-cli audit` | View audit trail (`--verify` to check HMAC chain) |
+| `ss-cli ssh <target>` | SSH into a server using secret credentials (ID or hostname) |
+| `ss-cli ssh-copy-id <target>` | Copy SSH public key using secret credentials |
 | `ss-cli windmill-sync` | Sync Windmill variables to SS (`--folder`, `--template`, `--dry-run`) |
 
 ## Configuration
@@ -224,6 +226,53 @@ Secret fields are mapped as:
 - **Username**: variable path (e.g., `f/INFLUXDB/influxdb_token`)
 - **Password**: variable value
 - **Notes**: variable description
+
+## SSH
+
+Connect to servers using credentials stored in Secret Server. Accepts a secret ID or hostname — if you pass a hostname, it searches Secret Server for a matching `Resource` field.
+
+```bash
+# By secret ID
+ss-cli ssh 18114
+
+# By hostname (searches Secret Server)
+ss-cli ssh brbpub01
+ss-cli ssh brbpub01.ohsu.edu
+
+# With extra SSH arguments
+ss-cli ssh 18114 -L 8080:localhost:80
+```
+
+### ssh-copy-id
+
+Copy your SSH public key to a server for key-based auth (standard Linux hosts only — not CUCM/Cisco appliances):
+
+```bash
+# One-time key deployment
+ss-cli ssh-copy-id 18114
+ss-cli ssh-copy-id brbpub01
+
+# After that, regular ssh works without password
+ssh netcomm@brbpub01.ohsu.edu
+```
+
+### Default SSH username
+
+If a secret doesn't have a `Username` field, ss-cli falls back to the `sshUsername` config:
+
+```bash
+ss-cli config set sshUsername netcomm
+```
+
+### Password delivery
+
+ss-cli automatically detects and uses the best available method:
+
+1. **sshpass** — if installed (`sudo apt install sshpass`)
+2. **expect** — usually pre-installed on Linux
+3. **SSH_ASKPASS** — fallback
+
+No password? ss-cli connects with key-based auth instead.
 
 ## Run (Secrets as Env Vars)
 
