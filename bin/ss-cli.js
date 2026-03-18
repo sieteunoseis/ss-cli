@@ -3,7 +3,7 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 const { Command } = require('commander');
-const { getConfig, setConfig, getConfigValue, requireConfigValue } = require('../lib/config');
+const { getConfig, setConfig, getConfigValue, requireConfigValue, importConfig } = require('../lib/config');
 const { saveToken, requireToken, tokenStatus } = require('../lib/token');
 const { oauth2Login, promptLogin } = require('../lib/auth');
 const { validateToken } = require('../lib/client');
@@ -78,6 +78,31 @@ configCmd
     .description('Show all config values')
     .action(() => {
         console.log(JSON.stringify(getConfig(), null, 2));
+    });
+
+configCmd
+    .command('import')
+    .description('Import config from JSON (stdin or argument)')
+    .argument('[json]', 'JSON string (or pipe via stdin)')
+    .action(async (json) => {
+        if (!json) {
+            // Read from stdin
+            const chunks = [];
+            for await (const chunk of process.stdin) chunks.push(chunk);
+            json = Buffer.concat(chunks).toString('utf8').trim();
+        }
+        if (!json) {
+            console.error('No JSON provided. Pipe JSON or pass as argument.');
+            process.exit(1);
+        }
+        try {
+            const config = importConfig(json);
+            console.log('Config updated:');
+            console.log(JSON.stringify(config, null, 2));
+        } catch (err) {
+            console.error(`Import failed: ${err.message}`);
+            process.exit(1);
+        }
     });
 
 // --- login ---
