@@ -120,8 +120,8 @@ Connect to servers using credentials stored in Secret Server. Accepts a secret I
 ss-cli ssh 18114
 
 # By hostname (searches Secret Server for matching secrets)
-ss-cli ssh brbpub01
-ss-cli ssh brbpub01.ohsu.edu
+ss-cli ssh pub01
+ss-cli ssh pub01.cisco.com
 
 # With extra SSH arguments
 ss-cli ssh 18114 -- -L 8080:localhost:80
@@ -131,12 +131,12 @@ ss-cli ssh 18114 -- -L 8080:localhost:80
 
 When you pass a hostname instead of a secret ID, ss-cli searches Secret Server using the configured `sshTemplates` and/or `sshFolder` filters:
 
-1. Strips the domain (e.g., `brbpub01.ohsu.edu` → `brbpub01`)
+1. Strips the domain (e.g., `pub01.cisco.com` → `pub01`)
 2. Searches secrets filtered by template IDs and/or folder ID
 3. If one match — uses it. If multiple — looks for an exact name match
 4. If still ambiguous — lists options so you can pick the ID
 
-This works best when SSH secrets are named by hostname (e.g., `brbpub01.ohsu.edu`) and use dedicated SSH templates.
+This works best when SSH secrets are named by hostname (e.g., `pub01.cisco.com`) and use dedicated SSH templates.
 
 #### Recommended Secret Server setup
 
@@ -147,7 +147,7 @@ Use templates with heartbeat/password rotation enabled:
 | Unix Account (SSH) | Linux servers | `Machine` |
 | Cisco Account (SSH) | CUCM, Cisco appliances | `Host` |
 
-Name each secret as the FQDN (e.g., `brbpub01.ohsu.edu`). Then configure ss-cli:
+Name each secret as the FQDN (e.g., `pub01.cisco.edu`). Then configure ss-cli:
 
 ```bash
 ss-cli config set sshTemplates 6007,6010    # Unix Account (SSH), Cisco Account (SSH)
@@ -165,7 +165,7 @@ ss-cli ssh-copy-id 18114
 ss-cli ssh-copy-id biccapps01
 
 # After that, regular ssh works without password
-ssh netcomm@biccapps01.ohsu.edu
+ssh netcomm@pub01.cisco.edu
 ```
 
 ### Password delivery
