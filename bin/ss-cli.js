@@ -16,6 +16,7 @@ const { listAllFolders } = require('../lib/get-folders');
 const { refreshEnv } = require('../lib/refresh-env');
 const { syncWindmillToSS } = require('../lib/windmill-sync');
 const { runWithMapFile, runWithSecret } = require('../lib/run');
+const { sshFromSecret } = require('../lib/ssh');
 const { resolveFile, resolveStdin } = require('../lib/resolve');
 const audit = require('../lib/audit');
 
@@ -348,6 +349,19 @@ program
             dryRun: opts.dryRun || false,
             skipSecrets: opts.skipSecrets || false
         });
+    });
+
+// --- ssh ---
+program
+    .command('ssh <id>')
+    .description('SSH into a server using credentials from a secret')
+    .argument('[ssh-args...]', 'Extra arguments to pass to ssh')
+    .action(async (id, sshArgs) => {
+        const url = requireConfigValue('url');
+        const token = requireToken();
+        audit.log('ssh', id, true);
+        const exitCode = await sshFromSecret(url, token, id, sshArgs);
+        process.exit(exitCode);
     });
 
 // --- run ---
