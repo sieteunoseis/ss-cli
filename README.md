@@ -1,6 +1,6 @@
 # ss-cli
 
-CLI tool for [Delinea Secret Server](https://delinea.com/products/secret-server). Supports OAuth2 authentication with TOTP 2FA (any provider — Duo, Google Authenticator, Microsoft Authenticator, etc.), secret CRUD operations, and automated env file syncing.
+CLI tool for [Delinea Secret Server](https://delinea.com/products/secret-server). Supports OAuth2 authentication with TOTP/MFA (any provider — Duo, Google Authenticator, Microsoft Authenticator, Authy, 1Password, etc.), secret CRUD operations, SSH with stored credentials, template-based secret resolution, and automated env file syncing.
 
 ## Install
 
@@ -76,17 +76,21 @@ ss-cli config set defaultFolder 1234
 ss-cli config set defaultTemplate 5678
 ss-cli config set defaultEnvFile /path/to/global.env
 ss-cli config set envMapFile /path/to/env-map.json
+ss-cli config set sshUsername myuser          # fallback SSH username
+ss-cli config set sshTemplates 6007,6010      # template IDs to search for ssh
+ss-cli config set sshFolder 3493              # folder ID to search for ssh
 ```
 
 ## Authentication
 
-### OAuth2 with TOTP
+### OAuth2 with TOTP/MFA
 
-Per [Delinea docs](https://docs.delinea.com/online-help/secret-server-11-5-x/api-scripting/authenticating/index.htm), the OTP code is sent as an HTTP header:
+Per [Delinea docs](https://docs.delinea.com/online-help/secret-server-11-5-x/api-scripting/authenticating/index.htm), the OTP code is sent as an HTTP header. This works with any TOTP provider (Duo, Google Authenticator, Microsoft Authenticator, Authy, 1Password, etc.):
 
 ```bash
 ss-cli login
-# Prompts: Username, Domain, Password, OTP (TOTP code or "push")
+# Prompts: Username, Domain, Password, OTP
+# OTP accepts: 6-digit TOTP code, or "push" for Duo push notification
 ```
 
 You can pre-configure username and domain:
@@ -106,6 +110,73 @@ ss-cli login --token <paste-token-here>
 ```
 
 Tokens are cached in `~/.config/ss/token.json` (mode 0600) and auto-expire.
+
+## SSH
+
+Connect to servers using credentials stored in Secret Server. Accepts a secret ID or hostname.
+
+```bash
+# By secret ID
+ss-cli ssh 18114
+
+# By hostname (searches Secret Server for matching secrets)
+ss-cli ssh brbpub01
+ss-cli ssh brbpub01.ohsu.edu
+
+# With extra SSH arguments
+ss-cli ssh 18114 -- -L 8080:localhost:80
+```
+
+### How hostname search works
+
+When you pass a hostname instead of a secret ID, ss-cli searches Secret Server using the configured `sshTemplates` and/or `sshFolder` filters:
+
+1. Strips the domain (e.g., `brbpub01.ohsu.edu` → `brbpub01`)
+2. Searches secrets filtered by template IDs and/or folder ID
+3. If one match — uses it. If multiple — looks for an exact name match
+4. If still ambiguous — lists options so you can pick the ID
+
+This works best when SSH secrets are named by hostname (e.g., `brbpub01.ohsu.edu`) and use dedicated SSH templates.
+
+#### Recommended Secret Server setup
+
+Use templates with heartbeat/password rotation enabled:
+
+| Template | Use case | Host field |
+|---|---|---|
+| Unix Account (SSH) | Linux servers | `Machine` |
+| Cisco Account (SSH) | CUCM, Cisco appliances | `Host` |
+
+Name each secret as the FQDN (e.g., `brbpub01.ohsu.edu`). Then configure ss-cli:
+
+```bash
+ss-cli config set sshTemplates 6007,6010    # Unix Account (SSH), Cisco Account (SSH)
+ss-cli config set sshFolder 3493            # optional: limit search to a specific folder
+ss-cli config set sshUsername netcomm        # fallback if secret has no username
+```
+
+### ssh-copy-id
+
+Copy your SSH public key to a server for passwordless auth (standard Linux hosts only — not CUCM/Cisco appliances):
+
+```bash
+# One-time key deployment
+ss-cli ssh-copy-id 18114
+ss-cli ssh-copy-id biccapps01
+
+# After that, regular ssh works without password
+ssh netcomm@biccapps01.ohsu.edu
+```
+
+### Password delivery
+
+ss-cli automatically detects and uses the best available method:
+
+1. **sshpass** — if installed (`sudo apt install sshpass`)
+2. **expect** — usually pre-installed on Linux
+3. **SSH_ASKPASS** — fallback
+
+No password in the secret? ss-cli connects with key-based auth instead.
 
 ## Env File Sync
 
@@ -158,16 +229,62 @@ Benefits:
 - No plaintext secrets on disk between deployments
 - Works with any app that reads environment variables
 
-### Piping to remote servers
+## Run (Secrets as Env Vars)
 
-Use `resolve` with SSH to inject secrets into remote commands without the secret touching the remote filesystem:
+Run a command with secrets injected as environment variables. Secrets only exist in the subprocess memory — never written to disk.
 
 ```bash
-# Resolve a template and pipe to a remote server
-ss-cli resolve --input docker-compose.tpl.yml | ssh netcomm@biccapps01 "cat > /tmp/docker-compose.yml && docker-compose -f /tmp/docker-compose.yml up -d && rm /tmp/docker-compose.yml"
+# Inject all secrets from a map file
+ss-cli run --map-file env-map.json -- docker-compose up -d
 
-# Run a remote command with a secret value
-ss-cli get 21909 --format json | ssh netcomm@biccapps01 "jq -r '.items[] | select(.fieldName==\"Password\") | .itemValue' | xargs -I{} curl -u admin:{} https://localhost/api"
+# Inject a single secret (all fields become env vars)
+ss-cli run --secret 21909 --env-prefix DB_ -- node app.js
+# Injects: DB_USERNAME, DB_PASSWORD, DB_URL, etc.
+```
+
+Use `run` when you want secrets available to a process but not persisted. Use `refresh-env` when you need a `.env` file on disk.
+
+## Resolve (Placeholder Replacement)
+
+Replace `<ss:ID:field>` placeholders in any file with actual secret values. Works with YAML, JSON, nginx configs, docker-compose files, or any text format.
+
+```bash
+# Resolve placeholders and write to a new file
+ss-cli resolve --input template.yml --output resolved.yml
+
+# Output to stdout (pipe to another command)
+ss-cli resolve --input template.yml
+
+# Pipe from stdin
+cat template.yml | ss-cli resolve
+```
+
+### Example template
+
+```yaml
+database:
+  host: <ss:21911:url>
+  user: <ss:21911:username>
+  password: <ss:21911:password>
+
+influxdb:
+  token: <ss:21909:password>
+  url: <ss:21909:url>
+```
+
+### Piping to remote servers
+
+Use `resolve` or `get` with SSH to inject secrets into remote commands without the secret touching the remote filesystem:
+
+```bash
+# Resolve a template and deploy to a remote server (secret never stored on disk)
+ss-cli resolve --input docker-compose.tpl.yml | ssh user@server "cat > /tmp/dc.yml && docker-compose -f /tmp/dc.yml up -d && rm /tmp/dc.yml"
+
+# Extract a single field and pipe to a remote command
+ss-cli get 21909 --format json | jq -r '.items[] | select(.fieldName=="Password") | .itemValue' | ssh user@server "xargs -I{} curl -u admin:{} https://localhost/api"
+
+# Chain: resolve a config, copy to remote, restart service
+ss-cli resolve --input nginx.conf.tpl | ssh user@server "sudo tee /etc/nginx/conf.d/app.conf > /dev/null && sudo nginx -s reload"
 ```
 
 ## Windmill Sync
@@ -227,94 +344,32 @@ Secret fields are mapped as:
 - **Password**: variable value
 - **Notes**: variable description
 
-## SSH
+## AI Agent Integration
 
-Connect to servers using credentials stored in Secret Server. Accepts a secret ID or hostname — if you pass a hostname, it searches Secret Server for a matching `Resource` field.
+ss-cli is designed to work with AI agents (Windmill, n8n, etc.) using a human-in-the-loop pattern:
 
-```bash
-# By secret ID
-ss-cli ssh 18114
-
-# By hostname (searches Secret Server)
-ss-cli ssh brbpub01
-ss-cli ssh brbpub01.ohsu.edu
-
-# With extra SSH arguments
-ss-cli ssh 18114 -L 8080:localhost:80
-```
-
-### ssh-copy-id
-
-Copy your SSH public key to a server for key-based auth (standard Linux hosts only — not CUCM/Cisco appliances):
+1. **Human authenticates** — runs `ss-cli login`, enters password + TOTP code
+2. **Agent checks token** — calls `ss-cli token-status --json` before each operation
+3. **Agent uses secrets** — calls `ss-cli get`, `ss-cli run`, `ss-cli resolve`, etc.
+4. **Token expires** — agent detects via `token-status`, notifies human to re-login
 
 ```bash
-# One-time key deployment
-ss-cli ssh-copy-id 18114
-ss-cli ssh-copy-id brbpub01
+# Agent checks if token is valid (exit code 0 = valid, 1 = expired)
+ss-cli token-status --json
+# {"valid":true,"expiresAt":"2026-03-18T18:46:20.645Z","minutesLeft":18}
 
-# After that, regular ssh works without password
-ssh netcomm@brbpub01.ohsu.edu
+# Agent fetches a secret
+ss-cli get 21909 --format json
+
+# Agent resolves a template
+ss-cli resolve --input config.tpl.yml --output config.yml
 ```
 
-### Default SSH username
-
-If a secret doesn't have a `Username` field, ss-cli falls back to the `sshUsername` config:
-
-```bash
-ss-cli config set sshUsername netcomm
-```
-
-### Password delivery
-
-ss-cli automatically detects and uses the best available method:
-
-1. **sshpass** — if installed (`sudo apt install sshpass`)
-2. **expect** — usually pre-installed on Linux
-3. **SSH_ASKPASS** — fallback
-
-No password? ss-cli connects with key-based auth instead.
-
-## Run (Secrets as Env Vars)
-
-Run a command with secrets injected as environment variables. Secrets only exist in the subprocess memory — never written to disk.
-
-```bash
-# Inject all secrets from a map file
-ss-cli run --map-file env-map.json -- docker-compose up -d
-
-# Inject a single secret (all fields become env vars)
-ss-cli run --secret 21909 --env-prefix DB_ -- node app.js
-# Injects: DB_USERNAME, DB_PASSWORD, DB_URL, etc.
-```
-
-Use `run` when you want secrets available to a process but not persisted. Use `refresh-env` when you need a `.env` file on disk.
-
-## Resolve (Placeholder Replacement)
-
-Replace `<ss:ID:field>` placeholders in any file with actual secret values. Works with YAML, JSON, nginx configs, or any text file.
-
-```bash
-# Resolve placeholders and write to a new file
-ss-cli resolve --input template.yml --output resolved.yml
-
-# Output to stdout
-ss-cli resolve --input template.yml
-
-# Pipe from stdin
-cat template.yml | ss-cli resolve
-```
-
-Example template:
-```yaml
-database:
-  host: <ss:21911:url>
-  user: <ss:21911:username>
-  password: <ss:21911:password>
-```
+The short token window (~20 min) IS the security model — no long-lived credentials to manage, and MFA is enforced on every session.
 
 ## Audit Trail
 
-All secret access (get, search, create, update) is logged to `~/.config/ss/audit.jsonl` with an HMAC-SHA256 chain for tamper detection.
+All secret access (get, search, create, update, ssh) is logged to `~/.config/ss/audit.jsonl` with an HMAC-SHA256 chain for tamper detection.
 
 ```bash
 # View recent entries
@@ -332,7 +387,7 @@ ss-cli audit --json
 
 ## Legacy SSL
 
-This tool includes support for servers that require legacy SSL renegotiation (OpenSSL 3.0+). No extra configuration needed.
+This tool includes support for servers that require legacy SSL renegotiation (OpenSSL 3.0+). No extra configuration needed — the client automatically enables `SSL_OP_LEGACY_SERVER_CONNECT`.
 
 ## License
 
