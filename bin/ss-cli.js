@@ -102,8 +102,13 @@ program
 program
     .command('token-status')
     .description('Show token validity and expiry')
-    .action(() => {
+    .option('--json', 'Output as JSON (for agents/scripts)')
+    .action((opts) => {
         const status = tokenStatus();
+        if (opts.json) {
+            console.log(JSON.stringify(status));
+            process.exit(status.valid ? 0 : 1);
+        }
         if (!status.valid) {
             console.log('No valid token. Run: ss-cli login');
             process.exit(1);
