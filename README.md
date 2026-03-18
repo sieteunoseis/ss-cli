@@ -134,6 +134,40 @@ ss-cli refresh-env --env-file /path/to/global.env --map-file /path/to/env-map.js
 
 Supported transforms: `hostname` (extract hostname from URL), `dbname` (extract path from URL).
 
+### Encrypting env files with dotenvx
+
+By default, `refresh-env` writes plaintext `.env` files. For encrypted env files that are safe to commit to git, chain with [dotenvx](https://dotenvx.com/):
+
+```bash
+# 1. Pull secrets from Secret Server into .env
+ss-cli refresh-env --env-file .env --map-file env-map.json
+
+# 2. Encrypt the .env file (creates .env.keys with decryption key)
+dotenvx encrypt .env
+
+# 3. Apps decrypt at runtime — .env can be committed to git
+dotenvx run -- docker-compose up -d
+dotenvx run -- node app.js
+```
+
+Benefits:
+- `.env` is encrypted at rest — safe to commit to version control
+- Decryption key (`.env.keys`) stays local or in a secure vault
+- No plaintext secrets on disk between deployments
+- Works with any app that reads environment variables
+
+### Piping to remote servers
+
+Use `resolve` with SSH to inject secrets into remote commands without the secret touching the remote filesystem:
+
+```bash
+# Resolve a template and pipe to a remote server
+ss-cli resolve --input docker-compose.tpl.yml | ssh netcomm@biccapps01 "cat > /tmp/docker-compose.yml && docker-compose -f /tmp/docker-compose.yml up -d && rm /tmp/docker-compose.yml"
+
+# Run a remote command with a secret value
+ss-cli get 21909 --format json | ssh netcomm@biccapps01 "jq -r '.items[] | select(.fieldName==\"Password\") | .itemValue' | xargs -I{} curl -u admin:{} https://localhost/api"
+```
+
 ## Windmill Sync
 
 Sync all variables from a [Windmill](https://www.windmill.dev/) workspace into Secret Server. Each Windmill variable becomes a secret (or updates an existing one) with the naming convention `Windmill: <path>`.
