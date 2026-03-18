@@ -288,9 +288,13 @@ program
 
         const folderId = parseInt(opts.folder || requireConfigValue('defaultFolder', '--folder'));
         const templateId = parseInt(opts.template || requireConfigValue('defaultTemplate', '--template'));
-        const wmUrl = opts.windmillUrl || requireConfigValue('windmillUrl', '--windmill-url');
-        const wmWorkspace = opts.windmillWorkspace || requireConfigValue('windmillWorkspace', '--windmill-workspace');
-        const wmToken = opts.windmillToken || requireConfigValue('windmillToken', '--windmill-token');
+        const wmUrl = opts.windmillUrl || process.env.WINDMILL_URL || getConfigValue('windmillUrl');
+        const wmWorkspace = opts.windmillWorkspace || process.env.WINDMILL_WORKSPACE || getConfigValue('windmillWorkspace');
+        const wmToken = opts.windmillToken || process.env.WINDMILL_TOKEN || getConfigValue('windmillToken');
+
+        if (!wmUrl) { console.error('Error: Windmill URL required. Use --windmill-url, WINDMILL_URL env var, or: ss-cli config set windmillUrl <url>'); process.exit(1); }
+        if (!wmWorkspace) { console.error('Error: Windmill workspace required. Use --windmill-workspace, WINDMILL_WORKSPACE env var, or: ss-cli config set windmillWorkspace <name>'); process.exit(1); }
+        if (!wmToken) { console.error('Error: Windmill token required. Use --windmill-token, WINDMILL_TOKEN env var, or: ss-cli config set windmillToken <token>'); process.exit(1); }
 
         await syncWindmillToSS({
             ssBaseUrl: url,

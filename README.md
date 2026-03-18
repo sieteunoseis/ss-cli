@@ -131,6 +131,63 @@ ss-cli refresh-env --env-file /path/to/global.env --map-file /path/to/env-map.js
 
 Supported transforms: `hostname` (extract hostname from URL), `dbname` (extract path from URL).
 
+## Windmill Sync
+
+Sync all variables from a [Windmill](https://www.windmill.dev/) workspace into Secret Server. Each Windmill variable becomes a secret (or updates an existing one) with the naming convention `Windmill: <path>`.
+
+### Setup
+
+Windmill credentials can be provided three ways (priority: CLI flag > env var > config):
+
+| Value | CLI flag | Env var | Config key |
+|---|---|---|---|
+| Windmill URL | `--windmill-url` | `WINDMILL_URL` | `windmillUrl` |
+| Workspace | `--windmill-workspace` | `WINDMILL_WORKSPACE` | `windmillWorkspace` |
+| API token | `--windmill-token` | `WINDMILL_TOKEN` | `windmillToken` |
+
+You also need a Secret Server folder and template ID for new secrets:
+
+```bash
+# One-time config
+ss-cli config set windmillUrl https://windmill.example.com
+ss-cli config set windmillWorkspace devops_workspace
+ss-cli config set windmillToken <your-windmill-token>
+ss-cli config set defaultFolder 3493
+ss-cli config set defaultTemplate 6064
+```
+
+### Usage
+
+```bash
+# Preview what would be synced
+ss-cli windmill-sync --dry-run
+
+# Sync all variables (creates or updates secrets)
+ss-cli windmill-sync
+
+# Skip variables marked as secret in Windmill
+ss-cli windmill-sync --skip-secrets
+
+# Override folder/template for this run
+ss-cli windmill-sync --folder 9999 --template 1234
+
+# Use env vars (e.g., from a .env file)
+source .env && ss-cli windmill-sync
+```
+
+### What it does
+
+For each variable in the Windmill workspace:
+1. Checks if a secret named `Windmill: <path>` exists in the target folder
+2. If it exists → updates the password, URL, and notes fields
+3. If not → creates a new secret using the configured template
+
+Secret fields are mapped as:
+- **URL**: `<windmill-url>/variables/<path>`
+- **Username**: variable path (e.g., `f/INFLUXDB/influxdb_token`)
+- **Password**: variable value
+- **Notes**: variable description
+
 ## Legacy SSL
 
 This tool includes support for servers that require legacy SSL renegotiation (OpenSSL 3.0+). No extra configuration needed.
