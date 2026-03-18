@@ -19,7 +19,30 @@ const { syncWindmillToSS } = require('../lib/windmill-sync');
 const program = new Command();
 program
     .name('ss-cli')
-    .description('Secret Server CLI')
+    .description(`Delinea Secret Server CLI
+
+Authentication:
+  Run "ss-cli login" to authenticate via OAuth2 (prompts for password + TOTP).
+  Or paste a browser token: "ss-cli login --token <token>"
+  Token is cached in ~/.config/ss/token.json and auto-expires.
+  Check with: "ss-cli token-status --json" (exit 0=valid, 1=expired)
+
+For AI agents / scripts:
+  Use --format json on "get" and --json on "token-status" for machine-readable output.
+  Token must be refreshed by a human (Duo MFA required).
+  Agent workflow: check token-status --json, if expired notify human, else proceed.
+
+Config keys (ss-cli config set <key> <value>):
+  url              Secret Server base URL (required)
+  domain           Auth domain (e.g. OHSUM01)
+  username         Default username for OAuth2 login
+  defaultFolder    Default folder ID for create/windmill-sync
+  defaultTemplate  Default template ID for create/windmill-sync
+  defaultEnvFile   Default env file path for refresh-env
+  envMapFile       Default map file path for refresh-env
+  windmillUrl      Windmill base URL
+  windmillWorkspace  Windmill workspace name
+  windmillToken    Windmill API token`)
     .version(require('../package.json').version);
 
 // --- config ---
