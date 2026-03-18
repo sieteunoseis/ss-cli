@@ -1,5 +1,15 @@
 #!/usr/bin/env node
 
+// Suppress TLS warning noise — must be set before any imports
+process.removeAllListeners('warning');
+const originalEmit = process.emit;
+process.emit = function (event, ...args) {
+    if (event === 'warning' && args[0]?.name === 'Warning' && args[0]?.message?.includes('NODE_TLS_REJECT_UNAUTHORIZED')) {
+        return false;
+    }
+    return originalEmit.apply(this, [event, ...args]);
+};
+
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 const { Command } = require('commander');
