@@ -8,6 +8,12 @@ CLI tool for [Delinea Secret Server](https://delinea.com/products/secret-server)
 npm install -g @sieteunoseis/ss-cli
 ```
 
+Or with npx (no install):
+
+```bash
+npx @sieteunoseis/ss-cli --help
+```
+
 Or install from source:
 
 ```bash

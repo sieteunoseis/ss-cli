@@ -1,5 +1,5 @@
 {
-  "name": "ss-cli",
+  "name": "@sieteunoseis/ss-cli",
   "version": "1.0.0",
   "description": "Secret Server CLI tool",
   "bin": {
