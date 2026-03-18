@@ -58,6 +58,9 @@ ss-cli token-status
 | `ss-cli folders` | List folders |
 | `ss-cli server-version` | Show Secret Server API version |
 | `ss-cli refresh-env` | Sync secrets to an env file (`--env-file`, `--map-file`) |
+| `ss-cli run` | Run a command with secrets as env vars — never written to disk |
+| `ss-cli resolve` | Replace `<ss:ID:field>` placeholders in any file |
+| `ss-cli audit` | View audit trail (`--verify` to check HMAC chain) |
 | `ss-cli windmill-sync` | Sync Windmill variables to SS (`--folder`, `--template`, `--dry-run`) |
 
 ## Configuration
@@ -187,6 +190,62 @@ Secret fields are mapped as:
 - **Username**: variable path (e.g., `f/INFLUXDB/influxdb_token`)
 - **Password**: variable value
 - **Notes**: variable description
+
+## Run (Secrets as Env Vars)
+
+Run a command with secrets injected as environment variables. Secrets only exist in the subprocess memory — never written to disk.
+
+```bash
+# Inject all secrets from a map file
+ss-cli run --map-file env-map.json -- docker-compose up -d
+
+# Inject a single secret (all fields become env vars)
+ss-cli run --secret 21909 --env-prefix DB_ -- node app.js
+# Injects: DB_USERNAME, DB_PASSWORD, DB_URL, etc.
+```
+
+Use `run` when you want secrets available to a process but not persisted. Use `refresh-env` when you need a `.env` file on disk.
+
+## Resolve (Placeholder Replacement)
+
+Replace `<ss:ID:field>` placeholders in any file with actual secret values. Works with YAML, JSON, nginx configs, or any text file.
+
+```bash
+# Resolve placeholders and write to a new file
+ss-cli resolve --input template.yml --output resolved.yml
+
+# Output to stdout
+ss-cli resolve --input template.yml
+
+# Pipe from stdin
+cat template.yml | ss-cli resolve
+```
+
+Example template:
+```yaml
+database:
+  host: <ss:21911:url>
+  user: <ss:21911:username>
+  password: <ss:21911:password>
+```
+
+## Audit Trail
+
+All secret access (get, search, create, update) is logged to `~/.config/ss/audit.jsonl` with an HMAC-SHA256 chain for tamper detection.
+
+```bash
+# View recent entries
+ss-cli audit
+
+# View last 50 entries
+ss-cli audit -n 50
+
+# Verify chain integrity (detect tampering)
+ss-cli audit --verify
+
+# JSON output (for scripts/agents)
+ss-cli audit --json
+```
 
 ## Legacy SSL
 

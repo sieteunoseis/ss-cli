@@ -15,6 +15,9 @@ const { listAllTemplates, findTemplateByName } = require('../lib/get-templates')
 const { listAllFolders } = require('../lib/get-folders');
 const { refreshEnv } = require('../lib/refresh-env');
 const { syncWindmillToSS } = require('../lib/windmill-sync');
+const { runWithMapFile, runWithSecret } = require('../lib/run');
+const { resolveFile, resolveStdin } = require('../lib/resolve');
+const audit = require('../lib/audit');
 
 const program = new Command();
 program
@@ -149,7 +152,14 @@ program
     .action(async (id, opts) => {
         const url = requireConfigValue('url');
         const token = requireToken();
-        const secret = await getSecret(url, token, parseInt(id));
+        let secret;
+        try {
+            secret = await getSecret(url, token, parseInt(id));
+            audit.log('get', id, true);
+        } catch (err) {
+            audit.log('get', id, false);
+            throw err;
+        }
 
         if (opts.format === 'json') {
             console.log(JSON.stringify(secret, null, 2));
@@ -173,6 +183,7 @@ program
         const token = requireToken();
         const folderId = opts.folder ? parseInt(opts.folder) : null;
         const records = await searchSecrets(url, token, term, folderId);
+        audit.log('search', term, true);
 
         if (records.length === 0) {
             console.log(`No secrets found matching "${term}"`);
@@ -208,6 +219,7 @@ program
             siteId: 1,
             items
         });
+        audit.log('create', result.id, true);
         console.log(`Created: ${result.name} (ID: ${result.id})`);
     });
 
@@ -232,6 +244,7 @@ program
         }
 
         const result = await updateSecret(url, token, parseInt(id), fields);
+        audit.log('update', id, true);
         console.log(`Updated: ${result.name} (ID: ${result.id})`);
     });
 
@@ -334,6 +347,92 @@ program
             templateId,
             dryRun: opts.dryRun || false,
             skipSecrets: opts.skipSecrets || false
+        });
+    });
+
+// --- run ---
+program
+    .command('run')
+    .description('Run a command with secrets injected as env vars (never written to disk)')
+    .option('--map-file <path>', 'JSON map file (same format as refresh-env)')
+    .option('--secret <id>', 'Fetch a single secret and expose all fields as env vars')
+    .option('--env-prefix <prefix>', 'Prefix for env var names when using --secret (e.g. DB_)')
+    .argument('[command...]', 'Command to run (after --)')
+    .action(async (command, opts) => {
+        const url = requireConfigValue('url');
+        const token = requireToken();
+
+        if (command.length === 0) {
+            console.error('No command specified. Usage: ss-cli run --map-file env-map.json -- <command>');
+            process.exit(1);
+        }
+
+        let exitCode;
+        if (opts.secret) {
+            exitCode = await runWithSecret(url, token, opts.secret, opts.envPrefix || '', command[0], command.slice(1));
+        } else if (opts.mapFile) {
+            const mapFile = opts.mapFile || getConfigValue('envMapFile');
+            if (!mapFile) { console.error('Error: --map-file or config envMapFile required'); process.exit(1); }
+            exitCode = await runWithMapFile(url, token, mapFile, command[0], command.slice(1));
+        } else {
+            console.error('Error: specify --map-file or --secret');
+            process.exit(1);
+        }
+
+        process.exit(exitCode);
+    });
+
+// --- resolve ---
+program
+    .command('resolve')
+    .description('Replace <ss:ID:field> placeholders in a file with secret values')
+    .option('--input <path>', 'Input file (or use stdin)')
+    .option('--output <path>', 'Output file (default: stdout)')
+    .action(async (opts) => {
+        const url = requireConfigValue('url');
+        const token = requireToken();
+
+        if (opts.input) {
+            await resolveFile(url, token, opts.input, opts.output);
+        } else {
+            await resolveStdin(url, token);
+        }
+    });
+
+// --- audit ---
+program
+    .command('audit')
+    .description('View or verify the audit trail')
+    .option('--verify', 'Verify HMAC chain integrity')
+    .option('--json', 'Output as JSON')
+    .option('-n, --last <count>', 'Show last N entries', '20')
+    .action((opts) => {
+        if (opts.verify) {
+            const result = audit.verifyChain();
+            if (opts.json) {
+                console.log(JSON.stringify(result));
+            } else if (result.valid) {
+                console.log(`Chain OK (${result.count} entries)`);
+            } else {
+                console.error(`Chain BROKEN (${result.count} entries, ${result.errors.length} error(s)):`);
+                result.errors.forEach(e => console.error(`  Entry ${e.index}: ${e.error}`));
+                process.exit(1);
+            }
+            return;
+        }
+
+        const entries = audit.readLog(parseInt(opts.last));
+        if (entries.length === 0) {
+            console.log('No audit entries.');
+            return;
+        }
+        if (opts.json) {
+            console.log(JSON.stringify(entries, null, 2));
+            return;
+        }
+        entries.forEach(e => {
+            const status = e.success ? 'OK' : 'FAIL';
+            console.log(`${e.ts}  ${status.padEnd(4)}  ${e.cmd.padEnd(8)}  ${e.target}`);
         });
     });
 
