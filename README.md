@@ -79,6 +79,7 @@ ss-cli config set envMapFile /path/to/env-map.json
 ss-cli config set sshUsername myuser          # fallback SSH username
 ss-cli config set sshTemplates 6007,6010      # template IDs to search for ssh
 ss-cli config set sshFolder 3493              # folder ID to search for ssh
+ss-cli config set sshDomain example.com       # domain suffix for hostname matching
 ```
 
 ## Authentication
@@ -120,8 +121,8 @@ Connect to servers using credentials stored in Secret Server. Accepts a secret I
 ss-cli ssh 18114
 
 # By hostname (searches Secret Server for matching secrets)
-ss-cli ssh pub01
-ss-cli ssh pub01.cisco.com
+ss-cli ssh myserver01
+ss-cli ssh myserver01.example.com
 
 # With extra SSH arguments
 ss-cli ssh 18114 -- -L 8080:localhost:80
@@ -131,12 +132,12 @@ ss-cli ssh 18114 -- -L 8080:localhost:80
 
 When you pass a hostname instead of a secret ID, ss-cli searches Secret Server using the configured `sshTemplates` and/or `sshFolder` filters:
 
-1. Strips the domain (e.g., `pub01.cisco.com` → `pub01`)
+1. Strips the domain (e.g., `myserver01.example.com` → `myserver01`)
 2. Searches secrets filtered by template IDs and/or folder ID
 3. If one match — uses it. If multiple — looks for an exact name match
 4. If still ambiguous — lists options so you can pick the ID
 
-This works best when SSH secrets are named by hostname (e.g., `pub01.cisco.com`) and use dedicated SSH templates.
+This works best when SSH secrets are named by FQDN (e.g., `myserver01.example.com`) and use dedicated SSH templates.
 
 #### Recommended Secret Server setup
 
@@ -147,12 +148,13 @@ Use templates with heartbeat/password rotation enabled:
 | Unix Account (SSH) | Linux servers | `Machine` |
 | Cisco Account (SSH) | CUCM, Cisco appliances | `Host` |
 
-Name each secret as the FQDN (e.g., `pub01.cisco.edu`). Then configure ss-cli:
+Name each secret as the FQDN (e.g., `myserver01.example.com`). Then configure ss-cli:
 
 ```bash
 ss-cli config set sshTemplates 6007,6010    # Unix Account (SSH), Cisco Account (SSH)
 ss-cli config set sshFolder 3493            # optional: limit search to a specific folder
-ss-cli config set sshUsername netcomm        # fallback if secret has no username
+ss-cli config set sshUsername myuser         # fallback if secret has no username
+ss-cli config set sshDomain example.com     # domain suffix for exact hostname matching
 ```
 
 ### ssh-copy-id
@@ -162,10 +164,10 @@ Copy your SSH public key to a server for passwordless auth (standard Linux hosts
 ```bash
 # One-time key deployment
 ss-cli ssh-copy-id 18114
-ss-cli ssh-copy-id biccapps01
+ss-cli ssh-copy-id myserver01
 
 # After that, regular ssh works without password
-ssh netcomm@pub01.cisco.edu
+ssh myuser@myserver01.example.com
 ```
 
 ### Password delivery

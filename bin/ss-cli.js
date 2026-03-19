@@ -48,7 +48,7 @@ For AI agents / scripts:
 
 Config keys (ss-cli config set <key> <value>):
   url              Secret Server base URL (required)
-  domain           Auth domain (e.g. OHSUM01)
+  domain           Auth domain (e.g. MYDOMAIN)
   username         Default username for OAuth2 login
   defaultFolder    Default folder ID for create/windmill-sync
   defaultTemplate  Default template ID for create/windmill-sync
@@ -56,7 +56,11 @@ Config keys (ss-cli config set <key> <value>):
   envMapFile       Default map file path for refresh-env
   windmillUrl      Windmill base URL
   windmillWorkspace  Windmill workspace name
-  windmillToken    Windmill API token`)
+  windmillToken    Windmill API token
+  sshUsername      Fallback SSH username if secret has no username
+  sshTemplates     Comma-separated template IDs for SSH hostname search
+  sshFolder        Folder ID to limit SSH hostname search
+  sshDomain        Domain suffix for hostname matching (e.g. example.com)`)
     .version(require('../package.json').version);
 
 // --- config ---
