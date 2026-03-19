@@ -49,6 +49,8 @@ ss-cli token-status
 | `ss-cli config show` | Show all config values |
 | `ss-cli login` | OAuth2 login (prompts for creds + OTP) |
 | `ss-cli login --token <token>` | Cache an existing API token |
+| `ss-cli session` | Login + spawn shell — token deleted on exit |
+| `ss-cli logout` | Delete the cached token |
 | `ss-cli token-status` | Show token validity / expiry time |
 | `ss-cli get <id>` | Get secret by ID (`--format json\|table`) |
 | `ss-cli search <term>` | Search secrets by name (`--folder <id>`) |
@@ -100,6 +102,27 @@ You can pre-configure username and domain:
 ss-cli config set username myuser
 ss-cli config set domain MYDOMAIN
 ss-cli login   # only prompts for password + OTP
+```
+
+### Session Mode
+
+Start a session that automatically cleans up the token when you close the terminal or exit the shell:
+
+```bash
+ss-cli session
+# Prompts for credentials + OTP, then spawns a new shell
+# Use ss-cli commands normally...
+# When you exit (Ctrl+D, "exit", or close the terminal), the token is deleted
+```
+
+This is useful when you want to ensure no token is left behind after you're done. The token is also cleaned up if the process receives SIGINT, SIGTERM, or SIGHUP.
+
+### Logout
+
+Delete the cached token at any time:
+
+```bash
+ss-cli logout
 ```
 
 ### Manual Token

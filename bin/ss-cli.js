@@ -14,7 +14,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 const { Command } = require('commander');
 const { getConfig, setConfig, getConfigValue, requireConfigValue, importConfig } = require('../lib/config');
-const { saveToken, requireToken, tokenStatus } = require('../lib/token');
+const { saveToken, requireToken, tokenStatus, deleteToken } = require('../lib/token');
 const { oauth2Login, promptLogin } = require('../lib/auth');
 const { validateToken } = require('../lib/client');
 const { getSecret, parseItems } = require('../lib/get-secret');
@@ -162,6 +162,61 @@ program
             console.error(`Login failed: ${err.message}`);
             process.exit(1);
         }
+    });
+
+// --- session ---
+program
+    .command('session')
+    .description('Login and spawn a shell — token is deleted when shell exits')
+    .option('--username <user>', 'Username for OAuth2 login')
+    .option('--domain <domain>', 'Domain for OAuth2 login')
+    .action(async (opts) => {
+        const url = requireConfigValue('url');
+
+        try {
+            const config = {
+                url,
+                username: opts.username || getConfigValue('username'),
+                domain: opts.domain || getConfigValue('domain')
+            };
+            const data = await promptLogin(config);
+            const ttl = data.expires_in ? Math.floor(data.expires_in / 60) : 55;
+            saveToken(data.access_token, ttl);
+            console.log(`Authenticated. Token saved (expires in ${ttl} min).`);
+        } catch (err) {
+            console.error(`Login failed: ${err.message}`);
+            process.exit(1);
+        }
+
+        // Spawn user's shell — token is cleaned up on exit
+        const shell = process.env.SHELL || '/bin/bash';
+        console.log(`Starting session (${shell}). Token will be deleted on exit.`);
+
+        const { spawn } = require('child_process');
+        const child = spawn(shell, [], { stdio: 'inherit', env: process.env });
+
+        child.on('exit', (code) => {
+            deleteToken();
+            console.log('\nSession ended. Token deleted.');
+            process.exit(code || 0);
+        });
+
+        // Also clean up on signals
+        for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+            process.on(sig, () => {
+                deleteToken();
+                child.kill(sig);
+            });
+        }
+    });
+
+// --- logout ---
+program
+    .command('logout')
+    .description('Delete the cached token')
+    .action(() => {
+        deleteToken();
+        console.log('Token deleted.');
     });
 
 // --- token-status ---
