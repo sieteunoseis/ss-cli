@@ -39,6 +39,8 @@ Authentication:
   Run "ss-cli login" to authenticate via OAuth2 (prompts for password + TOTP).
   Or paste a browser token: "ss-cli login --token <token>"
   Token is cached in ~/.config/ss/token.json and auto-expires.
+  Use "ss-cli session" for in-memory only (no file on disk).
+  Use "ss-cli logout" to delete a cached token.
   Check with: "ss-cli token-status --json" (exit 0=valid, 1=expired)
 
 For AI agents / scripts:
@@ -167,12 +169,13 @@ program
 // --- session ---
 program
     .command('session')
-    .description('Login and spawn a shell — token is deleted when shell exits')
+    .description('Login and spawn a shell — token lives in memory only, gone when shell exits')
     .option('--username <user>', 'Username for OAuth2 login')
     .option('--domain <domain>', 'Domain for OAuth2 login')
     .action(async (opts) => {
         const url = requireConfigValue('url');
 
+        let accessToken;
         try {
             const config = {
                 url,
@@ -180,33 +183,32 @@ program
                 domain: opts.domain || getConfigValue('domain')
             };
             const data = await promptLogin(config);
+            accessToken = data.access_token;
             const ttl = data.expires_in ? Math.floor(data.expires_in / 60) : 55;
-            saveToken(data.access_token, ttl);
-            console.log(`Authenticated. Token saved (expires in ${ttl} min).`);
+            console.log(`Authenticated (expires in ${ttl} min). Token is in-memory only.`);
         } catch (err) {
             console.error(`Login failed: ${err.message}`);
             process.exit(1);
         }
 
-        // Spawn user's shell — token is cleaned up on exit
+        // Spawn user's shell with token as env var — never written to disk
         const shell = process.env.SHELL || '/bin/bash';
-        console.log(`Starting session (${shell}). Token will be deleted on exit.`);
+        console.log(`Starting session (${shell}). Token will vanish when this shell exits.`);
 
         const { spawn } = require('child_process');
-        const child = spawn(shell, [], { stdio: 'inherit', env: process.env });
+        const child = spawn(shell, [], {
+            stdio: 'inherit',
+            env: { ...process.env, SS_TOKEN: accessToken }
+        });
 
         child.on('exit', (code) => {
-            deleteToken();
-            console.log('\nSession ended. Token deleted.');
+            console.log('\nSession ended. Token was never written to disk.');
             process.exit(code || 0);
         });
 
-        // Also clean up on signals
+        // Forward signals to child
         for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-            process.on(sig, () => {
-                deleteToken();
-                child.kill(sig);
-            });
+            process.on(sig, () => child.kill(sig));
         }
     });
 
@@ -224,8 +226,19 @@ program
     .command('token-status')
     .description('Show token validity and expiry')
     .option('--json', 'Output as JSON (for agents/scripts)')
-    .action((opts) => {
+    .action(async (opts) => {
         const status = tokenStatus();
+
+        // For session tokens (env var), validate against the API since we have no local expiry
+        if (status.source === 'session') {
+            const url = getConfigValue('url');
+            if (url) {
+                const { validateToken } = require('../lib/client');
+                const valid = await validateToken(url, process.env.SS_TOKEN);
+                status.valid = valid;
+            }
+        }
+
         if (opts.json) {
             console.log(JSON.stringify(status));
             process.exit(status.valid ? 0 : 1);
@@ -234,9 +247,15 @@ program
             console.log('No valid token. Run: ss-cli login');
             process.exit(1);
         }
-        console.log(`Valid:   ${status.valid}`);
-        console.log(`Expires: ${status.expiresAt}`);
-        console.log(`Left:    ${status.minutesLeft} min`);
+        if (status.source === 'session') {
+            console.log(`Valid:   ${status.valid}`);
+            console.log(`Source:  in-memory (SS_TOKEN)`);
+            console.log(`Note:    expiry not tracked locally — validated against server`);
+        } else {
+            console.log(`Valid:   ${status.valid}`);
+            console.log(`Expires: ${status.expiresAt}`);
+            console.log(`Left:    ${status.minutesLeft} min`);
+        }
     });
 
 // --- get ---

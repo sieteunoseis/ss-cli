@@ -49,9 +49,9 @@ ss-cli token-status
 | `ss-cli config show` | Show all config values |
 | `ss-cli login` | OAuth2 login (prompts for creds + OTP) |
 | `ss-cli login --token <token>` | Cache an existing API token |
-| `ss-cli session` | Login + spawn shell — token deleted on exit |
+| `ss-cli session` | Login + spawn shell — token in memory only, never on disk |
 | `ss-cli logout` | Delete the cached token |
-| `ss-cli token-status` | Show token validity / expiry time |
+| `ss-cli token-status` | Show token validity / expiry (`--json` for scripts) |
 | `ss-cli get <id>` | Get secret by ID (`--format json\|table`) |
 | `ss-cli search <term>` | Search secrets by name (`--folder <id>`) |
 | `ss-cli create` | Create a new secret (`--name`, `--template`, `--folder`, `--field key=val`) |
@@ -104,26 +104,67 @@ ss-cli config set domain MYDOMAIN
 ss-cli login   # only prompts for password + OTP
 ```
 
-### Session Mode
+### Session Mode (Recommended)
 
-Start a session that automatically cleans up the token when you close the terminal or exit the shell:
+Start a session where the token lives only in memory — never written to disk:
 
 ```bash
 ss-cli session
 # Prompts for credentials + OTP, then spawns a new shell
-# Use ss-cli commands normally...
-# When you exit (Ctrl+D, "exit", or close the terminal), the token is deleted
+# Token is passed as SS_TOKEN env var — never touches ~/.config/ss/token.json
+# Use ss-cli commands normally within this shell...
+# When you exit (Ctrl+D, "exit", or close the terminal), the token vanishes
 ```
 
-This is useful when you want to ensure no token is left behind after you're done. The token is also cleaned up if the process receives SIGINT, SIGTERM, or SIGHUP.
-
-### Logout
-
-Delete the cached token at any time:
+Example workflow:
 
 ```bash
+$ ss-cli session
+Username: myuser
+Domain (blank for default): MYDOMAIN
+Password:
+OTP (TOTP code or "push"): 123456
+Authenticated (expires in 19 min). Token is in-memory only.
+Starting session (/bin/zsh). Token will vanish when this shell exits.
+
+# Now use ss-cli normally — token is available via SS_TOKEN env var
+$ ss-cli get 21909 --format json
+$ ss-cli ssh myserver01
+$ ss-cli token-status
+Valid:   true
+Source:  in-memory (SS_TOKEN)
+Note:    expiry not tracked locally — validated against server
+
+# Done — exit the shell
+$ exit
+Session ended. Token was never written to disk.
+```
+
+This is the most secure mode — no token file to clean up, no risk of stale tokens on disk. The token only exists in the spawned shell's environment and is gone the moment the shell exits.
+
+### Login / Logout (File-Based)
+
+For workflows where you need the token to persist across terminals (e.g., AI agents), use `login` and `logout`:
+
+```bash
+# Login — writes token to ~/.config/ss/token.json (mode 0600)
+ss-cli login
+
+# Token is now available in any terminal on this machine
+ss-cli get 21909
+
+# Done — delete the token file
 ss-cli logout
 ```
+
+### Login vs Session
+
+| | `ss-cli login` | `ss-cli session` |
+|---|---|---|
+| Token storage | File (`~/.config/ss/token.json`) | Memory (`SS_TOKEN` env var) |
+| Available in other terminals | Yes | No (only in spawned shell) |
+| Cleanup | Manual (`ss-cli logout`) or auto-expire | Automatic when shell exits |
+| Best for | AI agents, multi-terminal workflows | Interactive use, security-conscious |
 
 ### Manual Token
 
@@ -133,7 +174,35 @@ If you have a token from a browser session:
 ss-cli login --token <paste-token-here>
 ```
 
-Tokens are cached in `~/.config/ss/token.json` (mode 0600) and auto-expire.
+### Token Status
+
+Check whether the current token is valid. In session mode, this validates against the server since there's no local expiry to check.
+
+```bash
+# Human-readable
+ss-cli token-status
+
+# JSON output (for agents/scripts) — exit code 0 = valid, 1 = expired
+ss-cli token-status --json
+```
+
+Example JSON responses:
+
+```jsonc
+// File-based token (from ss-cli login)
+{"valid":true,"expiresAt":"2026-03-18T18:46:20.645Z","savedAt":"2026-03-18T18:26:20.645Z","minutesLeft":18,"source":"file"}
+
+// Session token (from ss-cli session) — validated against server
+{"valid":true,"expiresAt":null,"savedAt":null,"minutesLeft":null,"source":"session"}
+
+// No token
+{"valid":false,"expiresAt":null,"savedAt":null,"minutesLeft":0,"source":"none"}
+```
+
+The `source` field tells agents how the token was provided:
+- `"file"` — from `~/.config/ss/token.json` (has local expiry tracking)
+- `"session"` — from `SS_TOKEN` env var (validated against server API)
+- `"none"` — no token found
 
 ## SSH
 
@@ -371,17 +440,17 @@ Secret fields are mapped as:
 
 ## AI Agent Integration
 
-ss-cli is designed to work with AI agents (Windmill, n8n, etc.) using a human-in-the-loop pattern:
+ss-cli is designed to work with AI agents (Windmill, n8n, etc.) using a human-in-the-loop pattern. Agents use file-based tokens (`ss-cli login`) since they need cross-process access.
 
 1. **Human authenticates** — runs `ss-cli login`, enters password + TOTP code
 2. **Agent checks token** — calls `ss-cli token-status --json` before each operation
 3. **Agent uses secrets** — calls `ss-cli get`, `ss-cli run`, `ss-cli resolve`, etc.
-4. **Token expires** — agent detects via `token-status`, notifies human to re-login
+4. **Token expires** — agent detects via `token-status` (exit code 1), notifies human to re-login
 
 ```bash
 # Agent checks if token is valid (exit code 0 = valid, 1 = expired)
 ss-cli token-status --json
-# {"valid":true,"expiresAt":"2026-03-18T18:46:20.645Z","minutesLeft":18}
+# {"valid":true,"expiresAt":"2026-03-18T18:46:20.645Z","savedAt":"...","minutesLeft":18,"source":"file"}
 
 # Agent fetches a secret
 ss-cli get 21909 --format json
@@ -390,7 +459,7 @@ ss-cli get 21909 --format json
 ss-cli resolve --input config.tpl.yml --output config.yml
 ```
 
-The short token window (~20 min) IS the security model — no long-lived credentials to manage, and MFA is enforced on every session.
+The short token window (~20 min) IS the security model — no long-lived credentials to manage, and MFA is enforced on every session. For interactive use, prefer `ss-cli session` which keeps the token in memory only.
 
 ## Audit Trail
 
