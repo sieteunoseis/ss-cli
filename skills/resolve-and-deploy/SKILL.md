@@ -1,7 +1,7 @@
 ---
 name: ss-cli-resolve-and-deploy
 description: Resolves <ss:ID:field> placeholders in a config template using Delinea Secret Server secrets, then deploys the result to a remote server via SSH. Secrets flow through stdin/stdout only — never stored on disk. Use when deploying config files that contain credentials.
-license: ISC
+license: MIT
 metadata:
   author: sieteunoseis
   version: "1.0.0"

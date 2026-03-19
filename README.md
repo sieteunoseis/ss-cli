@@ -586,4 +586,4 @@ npx skills add sieteunoseis/ss-cli --all
 
 ## License
 
-ISC
+MIT

@@ -10,7 +10,7 @@
     "url": "git+https://github.com/sieteunoseis/ss-cli.git"
   },
   "author": "sieteunoseis",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "commander": "^12.1.0",
     "dotenv": "^16.4.7",

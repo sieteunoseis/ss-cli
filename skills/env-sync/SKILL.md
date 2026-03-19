@@ -1,7 +1,7 @@
 ---
 name: ss-cli-env-sync
 description: Syncs secrets from Delinea Secret Server to a .env file using a JSON map. Use when the user asks to refresh, update, or pull credentials into an env file. Requires a valid ss-cli token.
-license: ISC
+license: MIT
 metadata:
   author: sieteunoseis
   version: "1.0.0"

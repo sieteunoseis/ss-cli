@@ -1,7 +1,7 @@
 ---
 name: ss-cli-deploy
 description: Deploys a Docker Compose service with secrets from Delinea Secret Server injected as environment variables. Secrets are never written to disk — they exist only in the subprocess memory. Use when deploying services that need credentials.
-license: ISC
+license: MIT
 metadata:
   author: sieteunoseis
   version: "1.0.0"

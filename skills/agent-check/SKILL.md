@@ -1,7 +1,7 @@
 ---
 name: ss-cli-agent-check
 description: Validates a Delinea Secret Server token before running any ss-cli operations. Use this at the start of any automated workflow. If the token is invalid or expired, stop and ask the human to run `ss-cli login`.
-license: ISC
+license: MIT
 metadata:
   author: sieteunoseis
   version: "1.0.0"

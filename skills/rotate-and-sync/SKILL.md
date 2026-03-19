@@ -1,7 +1,7 @@
 ---
 name: ss-cli-rotate-and-sync
 description: Updates a secret field in Delinea Secret Server and immediately re-syncs downstream env files. Use when the user asks to rotate a credential, change a password, or update a secret value.
-license: ISC
+license: MIT
 metadata:
   author: sieteunoseis
   version: "1.0.0"
