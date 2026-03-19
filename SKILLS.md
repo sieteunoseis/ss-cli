@@ -8,6 +8,28 @@ All skills check token validity before executing. If the token is expired (or mi
 
 ---
 
+## Installation
+
+Skills are compatible with [skills.sh](https://skills.sh/) and can be installed into any supported AI agent (Claude Code, Cursor, Cline, Copilot, etc.).
+
+```bash
+# Interactive — select skills and agents
+npx skills add sieteunoseis/ss-cli
+
+# Install all skills to all agents, no prompts
+npx skills add sieteunoseis/ss-cli --all
+
+# Install all skills, choose agents interactively
+npx skills add sieteunoseis/ss-cli -s '*'
+
+# Install globally (available across all projects)
+npx skills add sieteunoseis/ss-cli --all --global
+```
+
+Skills are installed to `~/.agents/skills/` and loaded automatically by supported agents.
+
+---
+
 ## Available Skills
 
 | Script | Purpose |

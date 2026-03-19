@@ -67,6 +67,37 @@ ss-cli token-status
 | `ss-cli ssh-copy-id <target>` | Copy SSH public key using secret credentials |
 | `ss-cli windmill-sync` | Sync Windmill variables to SS (`--folder`, `--template`, `--dry-run`) |
 
+## Discovery
+
+Use `grep` to filter `folders`, `templates`, and `search` output when looking up IDs.
+
+```bash
+# Find SSH-related folders
+ss-cli folders | grep -i ssh
+
+# Find Linux/Unix folders
+ss-cli folders | grep -i "unix\|linux"
+
+# Find a specific template by name
+ss-cli templates | grep -i "unix account"
+
+# Find secrets by keyword
+ss-cli search cucm
+ss-cli search cucm --folder 3493
+
+# Find a secret in a specific folder
+ss-cli search brbpub01 --folder 3493
+```
+
+Once you have the IDs, configure defaults so you don't have to pass them every time:
+
+```bash
+ss-cli config set sshFolder <folder-id>
+ss-cli config set sshTemplates <id1>,<id2>
+ss-cli config set defaultFolder <folder-id>
+ss-cli config set defaultTemplate <template-id>
+```
+
 ## Configuration
 
 All config is stored in `~/.config/ss/config.json`. CLI flags always override config values.
@@ -459,7 +490,63 @@ ss-cli get 21909 --format json
 ss-cli resolve --input config.tpl.yml --output config.yml
 ```
 
-The short token window (~20 min) IS the security model — no long-lived credentials to manage, and MFA is enforced on every session. For interactive use, prefer `ss-cli session` which keeps the token in memory only.
+The token lifetime is organization-specific and configured in Secret Server. Use `ss-cli token-status --json` to check `minutesLeft` and `expiresAt` for your installation. The short token window IS the security model — no long-lived credentials to manage, and MFA is enforced on every session. For interactive use, prefer `ss-cli session` which keeps the token in memory only.
+
+## Secure AI Agent Interaction
+
+AI agents can use credentials from Secret Server **without ever seeing the plaintext values**. The key is using `ss-cli run`, `ss-cli ssh`, and `ss-cli resolve --output` — commands that inject or apply secrets internally without printing them.
+
+### Session mode + Claude Code (recommended)
+
+An engineer starts a session, then launches their AI agent within the same shell. The agent inherits `SS_TOKEN` from the environment and can use secrets immediately — no file on disk, no token to clean up.
+
+```bash
+# Engineer authenticates (MFA enforced)
+ss-cli session
+# Authenticated. Token is in-memory only. Starting session (/bin/bash).
+
+# Launch Claude Code (or any agent) within the session shell
+$ claude
+# Agent now has access to SS_TOKEN — ss-cli commands work transparently
+```
+
+When the engineer exits the shell, the token vanishes. The agent never had access to the raw token value either — it simply inherits the environment.
+
+### How agents use credentials without seeing them
+
+| Task | Command | What the agent sees |
+|---|---|---|
+| Run a command with credentials | `ss-cli run --map-file env-map.json -- <cmd>` | stdout/stderr of the command only |
+| Run with a single secret | `ss-cli run --secret 21909 --env-prefix DB_ -- <cmd>` | stdout/stderr of the command only |
+| SSH into a server | `ss-cli ssh hostname` | the SSH session output |
+| Write a resolved config to disk | `ss-cli resolve --input tpl --output config.yml` | nothing — written directly to file |
+| Pipe resolved config to a remote | `ss-cli resolve --input tpl \| ssh user@host "tee /path/to/config"` | nothing — piped directly |
+
+The agent constructs the command — ss-cli fetches the credentials, injects them, and runs the subprocess. The credential values never appear in the conversation.
+
+### What agents should and should not do
+
+```bash
+# ✅ DO — inject credentials as env vars into a subprocess
+ss-cli run --map-file env-map.json -- docker-compose up -d
+
+# ✅ DO — inject a single secret with a prefix
+ss-cli run --secret 21909 --env-prefix INFLUX_ -- influx query 'from(bucket:"metrics")'
+
+# ✅ DO — SSH using stored credentials (agent sees the session, not the password)
+ss-cli ssh brbpub01
+
+# ✅ DO — resolve a template directly to a file (agent does not read the output)
+ss-cli resolve --input nginx.conf.tpl --output /etc/nginx/conf.d/app.conf
+
+# ✅ DO — pipe resolved config directly to a remote command
+ss-cli resolve --input config.tpl | ssh user@server "sudo tee /etc/app/config.yml > /dev/null"
+
+# ❌ AVOID — prints secret field values into the conversation
+ss-cli get 21909 --format json
+```
+
+> `ss-cli get` is useful for humans inspecting secrets but should be avoided in agent workflows where credential values should remain opaque. If the agent needs to reference a secret, have it work with the secret ID and field name — not the value.
 
 ## Audit Trail
 
@@ -482,6 +569,20 @@ ss-cli audit --json
 ## Legacy SSL
 
 This tool includes support for servers that require legacy SSL renegotiation (OpenSSL 3.0+). No extra configuration needed — the client automatically enables `SSL_OP_LEGACY_SERVER_CONNECT`.
+
+## Skills (AI Agent Workflows)
+
+Reusable workflow scripts for common Secret Server operations are available in the [`skills/`](skills/) directory. See [SKILLS.md](SKILLS.md) for full documentation.
+
+Install into any supported AI agent (Claude Code, Cursor, Cline, Copilot, etc.) via [skills.sh](https://skills.sh/):
+
+```bash
+# Interactive
+npx skills add sieteunoseis/ss-cli
+
+# Install all, no prompts
+npx skills add sieteunoseis/ss-cli --all
+```
 
 ## License
 
