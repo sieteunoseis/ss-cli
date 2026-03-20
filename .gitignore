@@ -1,3 +1,5 @@
 .env
 node_modules
 env-map.json
+
+/net-commander
