@@ -1,6 +1,6 @@
 {
   "name": "@sieteunoseis/ss-cli",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "Secret Server CLI tool",
   "bin": {
     "ss-cli": "./bin/ss-cli.js"

@@ -52,13 +52,15 @@ Config keys (ss-cli config set <key> <value>):
   url              Secret Server base URL (required)
   domain           Auth domain (e.g. MYDOMAIN)
   username         Default username for OAuth2 login
-  defaultFolder    Default folder ID for create/windmill-sync
-  defaultTemplate  Default template ID for create/windmill-sync
+  defaultFolder    Default folder ID for create (and windmill-sync fallback)
+  defaultTemplate  Default template ID for create (and windmill-sync fallback)
   defaultEnvFile   Default env file path for refresh-env
   envMapFile       Default map file path for refresh-env
   windmillUrl      Windmill base URL
   windmillWorkspace  Windmill workspace name
   windmillToken    Windmill API token
+  windmillFolder   Folder ID for windmill-sync (falls back to defaultFolder if unset)
+  windmillTemplate Template ID for windmill-sync (falls back to defaultTemplate if unset)
   sshUsername      Fallback SSH username if secret has no username
   sshTemplates     Comma-separated template IDs for SSH hostname search
   sshFolder        Folder ID to limit SSH hostname search
@@ -441,8 +443,8 @@ program
         const url = requireConfigValue('url');
         const token = requireToken();
 
-        const folderId = parseInt(opts.folder || requireConfigValue('defaultFolder', '--folder'));
-        const templateId = parseInt(opts.template || requireConfigValue('defaultTemplate', '--template'));
+        const folderId = parseInt(opts.folder || getConfigValue('windmillFolder') || requireConfigValue('defaultFolder', '--folder'));
+        const templateId = parseInt(opts.template || getConfigValue('windmillTemplate') || requireConfigValue('defaultTemplate', '--template'));
         const wmUrl = opts.windmillUrl || process.env.WINDMILL_URL || getConfigValue('windmillUrl');
         const wmWorkspace = opts.windmillWorkspace || process.env.WINDMILL_WORKSPACE || getConfigValue('windmillWorkspace');
         const wmToken = opts.windmillToken || process.env.WINDMILL_TOKEN || getConfigValue('windmillToken');

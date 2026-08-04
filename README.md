@@ -426,16 +426,18 @@ Windmill credentials can be provided three ways (priority: CLI flag > env var > 
 | Workspace | `--windmill-workspace` | `WINDMILL_WORKSPACE` | `windmillWorkspace` |
 | API token | `--windmill-token` | `WINDMILL_TOKEN` | `windmillToken` |
 
-You also need a Secret Server folder and template ID for new secrets:
+You also need a Secret Server folder and template ID for new secrets. Use `windmillFolder`/`windmillTemplate` rather than `defaultFolder`/`defaultTemplate` if you already use those for other commands (e.g. `create`) and don't want `windmill-sync` writing to that same folder — it only checks for existing secrets by name *within the target folder*, so pointing it at the wrong folder will create duplicates instead of updating the real ones:
 
 ```bash
 # One-time config
 ss-cli config set windmillUrl https://windmill.example.com
 ss-cli config set windmillWorkspace devops_workspace
 ss-cli config set windmillToken <your-windmill-token>
-ss-cli config set defaultFolder 3493
-ss-cli config set defaultTemplate 6064
+ss-cli config set windmillFolder 3493
+ss-cli config set windmillTemplate 6064
 ```
+
+`windmillFolder`/`windmillTemplate` are optional — if unset, `windmill-sync` falls back to `defaultFolder`/`defaultTemplate`.
 
 ### Usage
 
