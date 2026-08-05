@@ -271,6 +271,14 @@ connected to anything yet, `ss-cli ssh-list` automatically falls back to `--all`
 When output isn't a terminal (e.g. piped or scripted), it prints a plain list
 instead of the interactive menu.
 
+**`--all` scoping:** if `sshFolder` is configured, `--all` lists exactly what's in
+that folder (recursing into subfolders) and ignores `sshTemplates` — this keeps the
+list clean when other secrets elsewhere on the server happen to reuse an SSH
+template for unrelated things (license keys, wildcard certs, etc.). `sshTemplates`
+is only used for listing when `sshFolder` isn't set. (The hostname search described
+below still combines both filters, since it narrows down to an exact match
+afterward.)
+
 ### How hostname search works
 
 When you pass a hostname instead of a secret ID, ss-cli searches Secret Server using the configured `sshTemplates` and/or `sshFolder` filters:
