@@ -505,7 +505,7 @@ program
             const exitCode = await runSshList(url, token, Boolean(opts.all), sshArgs);
             process.exit(exitCode);
         } catch (err) {
-            console.error(`Error: ${err.message}`);
+            console.error(`Error: ${err && err.message ? err.message : err}`);
             process.exit(1);
         }
     });
