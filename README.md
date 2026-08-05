@@ -251,6 +251,26 @@ ss-cli ssh myserver01.example.com
 ss-cli ssh 18114 -- -L 8080:localhost:80
 ```
 
+### ssh-list
+
+Browse and pick a server interactively instead of typing a hostname or ID:
+
+```bash
+# Pick from servers you've connected to before (no API call)
+ss-cli ssh-list
+
+# Pick from every SSH secret in the configured sshFolder/sshTemplates
+ss-cli ssh-list --all
+
+# Extra SSH arguments are forwarded on connect, same as `ssh <target>`
+ss-cli ssh-list --all -- -L 8080:localhost:80
+```
+
+Use arrow keys to highlight a server and press Enter to connect. If you haven't
+connected to anything yet, `ss-cli ssh-list` automatically falls back to `--all`.
+When output isn't a terminal (e.g. piped or scripted), it prints a plain list
+instead of the interactive menu.
+
 ### How hostname search works
 
 When you pass a hostname instead of a secret ID, ss-cli searches Secret Server using the configured `sshTemplates` and/or `sshFolder` filters:
