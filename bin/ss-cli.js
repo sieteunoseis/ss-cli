@@ -26,7 +26,7 @@ const { listAllFolders } = require('../lib/get-folders');
 const { refreshEnv } = require('../lib/refresh-env');
 const { syncWindmillToSS } = require('../lib/windmill-sync');
 const { runWithMapFile, runWithSecret } = require('../lib/run');
-const { sshFromSecret, sshCopyIdFromSecret } = require('../lib/ssh');
+const { sshFromSecret, sshCopyIdFromSecret, runSshList } = require('../lib/ssh');
 const { resolveFile, resolveStdin } = require('../lib/resolve');
 const audit = require('../lib/audit');
 
@@ -490,6 +490,24 @@ program
         audit.log('ssh-copy-id', target, true);
         const exitCode = await sshCopyIdFromSecret(url, token, target, sshArgs);
         process.exit(exitCode);
+    });
+
+// --- ssh-list ---
+program
+    .command('ssh-list')
+    .description('List SSH servers and connect interactively (cached hosts by default, --all for full sshFolder/sshTemplates scope)')
+    .option('--all', 'Query all secrets in the configured sshFolder/sshTemplates instead of just cached hosts')
+    .argument('[ssh-args...]', 'Extra arguments to pass to ssh on connect')
+    .action(async (sshArgs, opts) => {
+        const url = requireConfigValue('url');
+        const token = requireToken();
+        try {
+            const exitCode = await runSshList(url, token, Boolean(opts.all), sshArgs);
+            process.exit(exitCode);
+        } catch (err) {
+            console.error(`Error: ${err.message}`);
+            process.exit(1);
+        }
     });
 
 // --- run ---
