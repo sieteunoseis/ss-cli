@@ -19,23 +19,35 @@
 
 ---
 
-### Task 1: Fix `searchSecrets` to omit empty search filter
+### Task 1: Fix `searchSecrets` to omit empty search filter and support subfolder recursion
+
+**Background confirmed live against this machine's real Secret Server:** `filter.folderId`
+alone does NOT include subfolders — a test folder went from `total: 2` (direct only) to
+`total: 1320` with `filter.includeSubFolders=true` added. `sshFolder` is meant to be
+pointed at a container folder with SSH secrets organized in subfolders underneath, so
+the SSH-specific call sites (Task 2) need this flag. The general `ss-cli search --folder`
+command and `windmill-sync`'s exact-folder existence check must NOT change — recursing
+there could make windmill-sync's duplicate-secret detection match a secret in an
+unrelated subfolder instead of creating a new one in the exact folder requested. So this
+is a new opt-in parameter, defaulted off, not a global behavior change.
 
 **Files:**
-- Modify: `lib/search-secrets.js:9`
+- Modify: `lib/search-secrets.js`
 
 **Interfaces:**
 - Consumes: nothing new.
-- Produces: `searchSecrets(baseUrl, apiToken, searchTerm, folderId, templateId, pageSize)` now treats a falsy `searchTerm` (`''`, `null`, `undefined`) as "no text filter" instead of sending `filter.searchText=` (empty string) to the API. Callers passing a real search term see no behavior change.
+- Produces: `searchSecrets(baseUrl, apiToken, searchTerm, folderId, templateId, pageSize, includeSubFolders)` —
+  1. treats a falsy `searchTerm` (`''`, `null`, `undefined`) as "no text filter" instead of sending `filter.searchText=` (empty string) to the API.
+  2. new 7th parameter `includeSubFolders = false` (default preserves current behavior for every existing caller); when truthy, adds `filter.includeSubFolders=true` to the query, only meaningful when `folderId` is also set.
 
 - [ ] **Step 1: Make the change**
 
-Replace the `path` construction in `lib/search-secrets.js`:
+Replace the full contents of `lib/search-secrets.js`:
 
 ```js
 const { makeClient } = require('./client');
 
-async function searchSecrets(baseUrl, apiToken, searchTerm, folderId = null, templateId = null, pageSize = 50) {
+async function searchSecrets(baseUrl, apiToken, searchTerm, folderId = null, templateId = null, pageSize = 50, includeSubFolders = false) {
     const client = makeClient(baseUrl, apiToken);
     let allRecords = [];
     let skip = 0;
@@ -44,6 +56,7 @@ async function searchSecrets(baseUrl, apiToken, searchTerm, folderId = null, tem
         let path = `/api/v1/secrets?take=${pageSize}&skip=${skip}`;
         if (searchTerm) path += `&filter.searchText=${encodeURIComponent(searchTerm)}`;
         if (folderId) path += `&filter.folderId=${folderId}`;
+        if (folderId && includeSubFolders) path += `&filter.includeSubFolders=true`;
         if (templateId) path += `&filter.secretTemplateId=${templateId}`;
 
         const data = await client.get(path);
@@ -66,31 +79,31 @@ Expected: prints `ok`.
 
 - [ ] **Step 3: Manual verification against the real Secret Server**
 
-This repo has no test framework or mocks — verification is against the real, already-configured Secret Server instance on this machine.
+This repo has no test framework or mocks — verification is against the real, already-configured Secret Server instance on this machine. Use a folder ID known to have subfolders (folder `3473` was confirmed live to have 19 subfolders and 1320 secrets recursively vs. 2 directly — use that same folder here, or substitute another folder ID you know has children via `ss-cli folders`).
 
 Run: `node -e "
 const { searchSecrets } = require('./lib/search-secrets');
 const { getConfigValue } = require('./lib/config');
+const { requireToken } = require('./lib/token');
 (async () => {
   const url = getConfigValue('url');
-  const token = process.env.SS_TOKEN || getConfigValue('token');
-  const folderId = getConfigValue('sshFolder');
-  const results = await searchSecrets(url, token, '', folderId || null);
-  console.log('count:', results.length);
-  console.log(results.slice(0, 3).map(r => r.name));
+  const token = requireToken();
+  const flat = await searchSecrets(url, token, '', 3473);
+  const recursive = await searchSecrets(url, token, '', 3473, null, 50, true);
+  console.log('flat count:', flat.length, '| recursive count:', recursive.length);
 })();
 "`
 
-If this errors because the token isn't in config (it's normally supplied via `ss-cli login`/env), run `ss-cli login` first or export `SS_TOKEN` per the README's auth section, then retry.
+If the stored token has expired, run `ss-cli login` first, then retry.
 
-Expected: no error, `count:` is greater than 0 if `sshFolder` has secrets in it, and the printed names look like real secret names (not empty strings or garbage) — confirming the omitted `filter.searchText` returns the full folder contents rather than zero/all-secrets-server-wide.
+Expected: `recursive count` is substantially larger than `flat count` (matching the live totals of 2 vs 1320 confirmed for folder 3473), and `flat count` matches what today's behavior already returns — confirming the new parameter is additive and off-by-default.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 cd ~/development/ss-cli
 git add lib/search-secrets.js
-git commit -m "Omit empty filter.searchText so folder/template queries can list all secrets"
+git commit -m "Add includeSubFolders option and omit empty filter.searchText"
 ```
 
 ---
@@ -101,11 +114,11 @@ git commit -m "Omit empty filter.searchText so folder/template queries can list 
 - Modify: `lib/ssh.js:42-124` (the `resolveSecret` function)
 
 **Interfaces:**
-- Consumes: `searchSecrets` (from Task 1, already imported at the top of `lib/ssh.js` as `const { searchSecrets } = require('./search-secrets');` — no import change needed).
+- Consumes: `searchSecrets(baseUrl, apiToken, searchTerm, folderId, templateId, pageSize, includeSubFolders)` (from Task 1, already imported at the top of `lib/ssh.js` as `const { searchSecrets } = require('./search-secrets');` — no import change needed; Task 1 added the new 7th parameter).
 - Produces (new, internal to `lib/ssh.js`, not yet exported):
-  - `async function searchSshSecrets(baseUrl, apiToken, searchTerm = '')` → `Promise<Array<{id, name, ...}>>` — queries `sshFolder`/`sshTemplates` scope, deduped by `id`. Does NOT check whether the scope is configured; returns `[]` if `templateIds` is empty and `folderId` is null.
+  - `async function searchSshSecrets(baseUrl, apiToken, searchTerm = '')` → `Promise<Array<{id, name, ...}>>` — queries `sshFolder`/`sshTemplates` scope, deduped by `id`. The `sshFolder` branch passes `includeSubFolders: true` (see Step 2) so secrets nested in subfolders under `sshFolder` are included — confirmed live that Secret Server's folder filter does not recurse by default. Does NOT check whether the scope is configured; returns `[]` if `templateIds` is empty and `folderId` is null.
   - `async function listAllSshSecrets(baseUrl, apiToken)` → `Promise<Array<{id, name, ...}>>` — throws if neither `sshFolder` nor `sshTemplates` is configured, throws if the query returns zero results, otherwise returns the same array `searchSshSecrets('')` would.
-- `resolveSecret`'s external behavior (return value and side effects for every input) is unchanged — this is a pure refactor.
+- `resolveSecret`'s return value and side effects are unchanged for every input EXCEPT that its `sshFolder`-scoped branch now also matches secrets in subfolders under `sshFolder` (previously it silently missed them) — an intentional behavior improvement decided alongside this task, not a regression. The single-match/exact-match/list-options logic downstream of the search is untouched.
 
 - [ ] **Step 1: Replace the inline search-building block inside `resolveSecret`**
 
@@ -158,7 +171,7 @@ async function searchSshSecrets(baseUrl, apiToken, searchTerm = '') {
     const seen = new Set();
 
     if (folderId) {
-        const results = await searchSecrets(baseUrl, apiToken, searchTerm, folderId);
+        const results = await searchSecrets(baseUrl, apiToken, searchTerm, folderId, null, 50, true);
         results.forEach(r => { if (!seen.has(r.id)) { seen.add(r.id); allResults.push(r); } });
     }
 
@@ -197,15 +210,15 @@ async function listAllSshSecrets(baseUrl, apiToken) {
 Run: `node -e "require('./lib/ssh.js'); console.log('ok')"` from the repo root.
 Expected: prints `ok`.
 
-- [ ] **Step 4: Manual regression check of unchanged `resolveSecret` behavior**
+- [ ] **Step 4: Manual regression check of `resolveSecret` behavior**
 
-Run the existing hostname-based SSH lookup against a known real hostname (one you've connected to before, so the flow exercises the folder/template search path):
+Run the existing hostname-based SSH lookup against a known real hostname (one you've connected to before, so the flow exercises the `sshTemplates`-scoped search path):
 
 `node bin/ss-cli.js ssh <a-known-real-hostname> -- -o BatchMode=yes -o ConnectTimeout=3`
 
 (`BatchMode=yes` + short `ConnectTimeout` keep this from hanging on a password prompt — we're only verifying that the *secret resolution* still logs `Found: [id] name` or `Cached: [id] name` correctly, not that the SSH session itself completes.)
 
-Expected: same `Found:`/`Cached:` resolution message and same target host as before this refactor — confirming `searchSshSecrets` produces identical results to the old inline code.
+Expected: same `Found:`/`Cached:` resolution message and same target host as before this refactor — confirming `searchSshSecrets` produces identical results to the old inline code for the `sshTemplates` path. Note: this machine's current config has `sshTemplates` set but no `sshFolder`, so this check exercises the template branch, not the new `includeSubFolders` folder branch — that branch's correctness was already confirmed live in Task 1 Step 3 (folder `3473`: 2 direct vs. 1320 recursive). If `sshFolder` is configured before this task runs, also verify a hostname known to live in a subfolder now resolves correctly where it previously would have failed with "No SSH secrets found."
 
 - [ ] **Step 5: Commit**
 

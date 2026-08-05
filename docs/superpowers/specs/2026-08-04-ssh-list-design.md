@@ -48,11 +48,23 @@ block, parameterized by a hostname search term. Extract it into a shared helper 
 async function searchSshSecrets(baseUrl, apiToken, searchTerm = '') { ... }
 ```
 
-`resolveSecret` calls it with the hostname search term (existing behavior, unchanged);
-`ssh-list --all` calls it with no term to get every secret in scope. `searchSecrets`
-(`lib/search-secrets.js`) must omit the `filter.searchText` query param entirely when
-`searchTerm` is falsy, rather than sending an empty string, so the API returns
-everything in the folder/template scope instead of an empty-string-match subset.
+`resolveSecret` calls it with the hostname search term; `ssh-list --all` calls it with
+no term to get every secret in scope. `searchSecrets` (`lib/search-secrets.js`) must
+omit the `filter.searchText` query param entirely when `searchTerm` is falsy, rather
+than sending an empty string, so the API returns everything in the folder/template
+scope instead of an empty-string-match subset.
+
+**Subfolder recursion (confirmed live against this Secret Server):** `filter.folderId`
+does not include subfolders by default — a test folder went from `total: 2` to
+`total: 1320` with `filter.includeSubFolders=true` added. Since `sshFolder` is meant to
+point at a container folder with servers organized in subfolders underneath,
+`searchSshSecrets`'s folder-scoped query passes `includeSubFolders: true`. This is a new
+opt-in parameter on `searchSecrets` (default `false`), not a global behavior change —
+the general `ss-cli search --folder` command and `windmill-sync`'s exact-folder
+existence check keep today's flat (non-recursive) behavior, since recursing there could
+make windmill-sync's duplicate-secret detection match a secret in an unrelated
+subfolder. This also fixes a pre-existing gap in `resolveSecret`'s hostname search: any
+SSH secret sitting in a subfolder under `sshFolder` was previously invisible to it.
 
 If neither `sshFolder` nor `sshTemplates` is configured, errors with the existing
 message:
